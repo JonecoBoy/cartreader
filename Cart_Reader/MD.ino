@@ -276,7 +276,13 @@ void mdMenu() {
       resetFlash_MD();
       idFlash_MD();
       resetFlash_MD();
-      if (flashid == 0xC2F1) {
+      if (flashid == 0x0158) {
+        println_Msg(F("AM29F800BB detected"));
+        flashSize = 1048576;
+      } else if (flashid == 0x0458) {
+        println_Msg(F("MBM29F800BA detected"));
+        flashSize = 1048576;
+      } else if (flashid == 0xC2F1) {
         println_Msg(F("MX29F1610 detected"));
         flashSize = 2097152;
       } else if (flashid == 0x017E) {
@@ -296,6 +302,8 @@ void mdMenu() {
         write29F1610_MD();
       else if (flashid == 0x017E)
         write29GL_MD();
+      else if (flashid == 0x0158 || flashid == 0x0458)
+        write29F800_MD();
       resetFlash_MD();
       delay(1000);
       resetFlash_MD();
@@ -2040,6 +2048,70 @@ void write29F1610_MD() {
       busyCheck_MD();
 
       // update progress bar
+      processedProgressBar += 64;
+      draw_progressbar(processedProgressBar, totalProgressBar);
+    }
+
+    // Set data pins to input again
+    dataIn_MD();
+
+    // Close the file:
+    myFile.close();
+  } else {
+    print_STR(open_file_STR, 1);
+    display_Update();
+  }
+}
+
+void write29F800_MD() {
+  // Create filepath
+  sprintf(filePath, "%s/%s", filePath, fileName);
+  print_STR(flashing_file_STR, 0);
+  print_Msg(filePath);
+  println_Msg(F("..."));
+  display_Update();
+
+  // Open file on sd card
+  if (myFile.open(filePath, O_READ)) {
+    // Get rom size from file
+    fileSize = myFile.fileSize();
+    if (fileSize > flashSize) {
+      print_FatalError(file_too_big_STR);
+    }
+    // Set data pins to output
+    dataOut_MD();
+
+    //Initialize progress bar
+    uint32_t processedProgressBar = 0;
+    uint32_t totalProgressBar = (uint32_t)fileSize / 2;
+    draw_progressbar(0, totalProgressBar);
+
+    int d = 0;
+    for (unsigned long currByte = 0; currByte < fileSize / 2; currByte += 64) {
+      myFile.read(sdBuffer, 128);
+
+      // Blink led
+      if (currByte % 4096 == 0) {
+        blinkLED();
+      }
+
+      // Write one word at a time with its own unlock sequence
+      for (byte c = 0; c < 64; c++) {
+        word currWord = ((sdBuffer[d] & 0xFF) << 8) | (sdBuffer[d + 1] & 0xFF);
+
+        // Write command sequence (AM29F800 word mode: 0x555/0x2AA)
+        writeFlash_MD(0x555, 0xaa);
+        writeFlash_MD(0x2aa, 0x55);
+        writeFlash_MD(0x555, 0xa0);
+        writeFlash_MD(currByte + c, currWord);
+
+        // Check if write is complete
+        busyCheck_MD();
+        d += 2;
+      }
+      d = 0;
+
+      // Update progress bar
       processedProgressBar += 64;
       draw_progressbar(processedProgressBar, totalProgressBar);
     }
