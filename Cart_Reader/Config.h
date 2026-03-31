@@ -29,7 +29,7 @@
     Choose your hardware version:
 */
 
-//#define HW5
+#define HW5
 //#define HW4
 //#define HW3
 //#define HW2
@@ -181,15 +181,15 @@
 /* [ Flash Repros (all systems, SNES repro also needs FLASH8)------ ]
 */
 
-//#define ENABLE_FLASH 
+#define ENABLE_FLASH 
 
 /****/
 
 /* [ Flashrom Programmer Menu & SNES Repros------------------------ ]
 */
 
-//#define ENABLE_FLASH8 
-//#define ENABLE_FLASH16 
+#define ENABLE_FLASH8 
+#define ENABLE_FLASH16 
 
 /****/
 
@@ -253,7 +253,7 @@
 /* [ PC Engine/TurboGrafx 16 -------------------------------------- ]
 */
 
-//#define ENABLE_PCE
+#define ENABLE_PCE
 
 /****/
 
