@@ -275,8 +275,11 @@ void mdMenu() {
       // ID flash
       resetFlash_MD();
       idFlash_MD();
+      if ((flashid != 0xC2F1) && (flashid != 0x017E)) {
+        idFlash29F800_MD();
+      }
       resetFlash_MD();
-      if (flashid == 0x0158) {
+      if (isFlash29F800_MD()) {
         println_Msg(F("AM29F800BB detected"));
         flashSize = 1048576;
       } else if (flashid == 0x0458) {
@@ -295,14 +298,17 @@ void mdMenu() {
       }
       println_Msg("Erasing...");
       display_Update();
-      eraseFlash_MD();
+      if (isFlash29F800_MD())
+        eraseFlash29F800_MD();
+      else
+        eraseFlash_MD();
       resetFlash_MD();
       blankcheck_MD();
       if (flashid == 0xC2F1)
         write29F1610_MD();
       else if (flashid == 0x017E)
         write29GL_MD();
-      else if (flashid == 0x0158 || flashid == 0x0458)
+      else if (isFlash29F800_MD())
         write29F800_MD();
       resetFlash_MD();
       delay(1000);
@@ -1989,12 +1995,17 @@ void resetFlash_MD() {
   dataOut_MD();
 
   // Reset command sequence
+  writeFlash_MD(0x555, 0xf0);
   writeFlash_MD(0x5555, 0xaa);
   writeFlash_MD(0x2aaa, 0x55);
   writeFlash_MD(0x5555, 0xf0);
 
   // Set data pins to input again
   dataIn_MD();
+}
+
+bool isFlash29F800_MD() {
+  return ((flashid == 0x0158) || (flashid == 0x1E3E) || (flashid == 0x0458) || (flashid == 0xFF00) || (flashid == 0xFF80));
 }
 
 void write29F1610_MD() {
@@ -2105,8 +2116,9 @@ void write29F800_MD() {
         writeFlash_MD(0x555, 0xa0);
         writeFlash_MD(currByte + c, currWord);
 
-        // Check if write is complete
-        busyCheck_MD();
+        // 29F800BB can leave DQ7 polling unreliable on some MD repro boards.
+        // Use the datasheet program delay and let verify catch any bad writes.
+        delayMicroseconds(20);
         d += 2;
       }
       d = 0;
@@ -2225,6 +2237,24 @@ void idFlash_MD() {
   sprintf(flashid_str, "%04X", flashid);
 }
 
+void idFlash29F800_MD() {
+  // Set data pins to output
+  dataOut_MD();
+
+  // ID command sequence (29F800 x16 mode)
+  writeFlash_MD(0x555, 0xaa);
+  writeFlash_MD(0x2aa, 0x55);
+  writeFlash_MD(0x555, 0x90);
+
+  // Set data pins to input again
+  dataIn_MD();
+
+  // Read the two id bytes into a string
+  flashid = (readFlash_MD(0) & 0xFF) << 8;
+  flashid |= readFlash_MD(1) & 0xFF;
+  sprintf(flashid_str, "%04X", flashid);
+}
+
 byte readStatusReg_MD() {
   // Set data pins to output
   dataOut_MD();
@@ -2258,6 +2288,36 @@ void eraseFlash_MD() {
   dataIn_MD();
 
   busyCheck_MD();
+}
+
+void eraseFlash29F800_MD() {
+  unsigned long sectorAddress = 0;
+
+  // Bottom boot sectors used by AM29F800BB: 16K, 8K, 8K, 32K.
+  eraseFlash29F800Sector_MD(0x0000);
+  eraseFlash29F800Sector_MD(0x2000);
+  eraseFlash29F800Sector_MD(0x3000);
+  eraseFlash29F800Sector_MD(0x4000);
+
+  // Remaining sectors are 64K byte / 32K word sectors.
+  for (sectorAddress = 0x8000; sectorAddress < flashSize / 2; sectorAddress += 0x8000) {
+    eraseFlash29F800Sector_MD(sectorAddress);
+  }
+}
+
+void eraseFlash29F800Sector_MD(unsigned long sectorAddress) {
+  // Set data pins to output
+  dataOut_MD();
+
+  // Sector erase command sequence (29F800 x16 mode)
+  writeFlash_MD(0x555, 0xaa);
+  writeFlash_MD(0x2aa, 0x55);
+  writeFlash_MD(0x555, 0x80);
+  writeFlash_MD(0x555, 0xaa);
+  writeFlash_MD(0x2aa, 0x55);
+  writeFlash_MD(sectorAddress, 0x30);
+
+  waitFlash29F800_MD(sectorAddress, 0xFFFF, 5000);
 }
 
 void blankcheck_MD() {
@@ -2335,6 +2395,34 @@ void busyCheck_MD() {
   // Set data pins to output
   dataOut_MD();
 }
+
+boolean waitFlash29F800_MD(unsigned long myAddress, word myData, unsigned long timeout) {
+  unsigned long startTime = millis();
+
+  // Set data pins to input
+  dataIn_MD();
+
+  while ((millis() - startTime) < timeout) {
+    word statusReg = readFlash_MD(myAddress);
+    if ((statusReg & 0x0080) == (myData & 0x0080)) {
+      dataOut_MD();
+      return true;
+    }
+
+    if (statusReg & 0x0020) {
+      statusReg = readFlash_MD(myAddress);
+      if ((statusReg & 0x0080) == (myData & 0x0080)) {
+        dataOut_MD();
+        return true;
+      }
+      break;
+    }
+  }
+
+  dataOut_MD();
+  return false;
+}
+
 #endif
 
 //******************************************

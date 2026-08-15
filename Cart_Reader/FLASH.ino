@@ -264,7 +264,7 @@ void flashromMenu8() {
               writeFlash29LV640();
             else if (flashid == 0x017E)
               writeFlash29GL(sectorSize, bufferSize);
-            else if ((flashid == 0x0458) || (flashid == 0x0158) || (flashid == 0x01AB) || (flashid == 0x0422) || (flashid == 0x0423))
+            else if ((flashid == 0x0458) || (flashid == 0xFF80)|| (flashid == 0x0158) || (flashid == 0x01AB) || (flashid == 0x0422) || (flashid == 0x0423))
               writeFlash29F800();
             else if (flashid == 0x0)  // Manual flash config, pick most common type
               writeFlash29LV640();
