@@ -2557,6 +2557,18 @@ void println_Log(const __FlashStringHelper* string) {
 }
 #endif
 
+const char* fileNameFromPath(const char path[]) {
+  const char* name = path;
+
+  for (const char* c = path; *c; c++) {
+    if ((*c == '/') || (*c == '\\')) {
+      name = c + 1;
+    }
+  }
+
+  return name;
+}
+
 void print_Msg(const __FlashStringHelper* string) {
 #if (defined(ENABLE_LCD) || defined(ENABLE_OLED))
   display.print(string);

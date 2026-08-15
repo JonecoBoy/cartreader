@@ -29,9 +29,9 @@
     Choose your hardware version:
 */
 
-#define HW5
+//#define HW5
 //#define HW4
-//#define HW3
+#define HW3
 //#define HW2
 //#define HW1
 //#define SERIAL_MONITOR
@@ -196,7 +196,7 @@
 /* [ Game Boy (Color) and Advance --------------------------------- ]
 */
 
-#define ENABLE_GBX
+// #define ENABLE_GBX
 
 /****/
 
@@ -224,7 +224,7 @@
 /* [ Nintendo 64 -------------------------------------------------- ]
 */
 
-#define ENABLE_N64
+// #define ENABLE_N64
 //#define ENABLE_CONTROLLERTEST
 
 /****/
@@ -232,7 +232,7 @@
 /* [ Nintendo Entertainment System/Family Computer ---------------- ]
 */
 
-#define ENABLE_NES
+// #define ENABLE_NES
 
 /****/
 
@@ -274,7 +274,7 @@
 /* [ Sega Master System/Mark III/Game Gear/SG-1000 ---------------- ]
 */
 
-#define ENABLE_SMS
+// #define ENABLE_SMS
 
 /****/
 
@@ -316,7 +316,7 @@
 /* [ Super Nintendo ----------------------------------------------- ]
 */
 
-#define ENABLE_SNES
+// #define ENABLE_SNES
 
 /****/
 

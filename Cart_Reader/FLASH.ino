@@ -1482,7 +1482,7 @@ bool openFlashFile() {
   // Create filepath
   sprintf(filePath, "%s/%s", filePath, fileName);
   print_STR(flashing_file_STR, 0);
-  print_Msg(filePath);
+  print_Msg(fileNameFromPath(filePath));
   println_Msg(F("..."));
   display_Update();
 
@@ -3143,7 +3143,7 @@ void writeCFI_Flash(byte currChip, byte totalChips, boolean reversed) {
   if (openFileOnSD()) {
     // Print filepath
     print_STR(flashing_file_STR, 0);
-    print_Msg(filePath);
+    print_Msg(fileNameFromPath(filePath));
     println_Msg(F("..."));
     // Check size
     if ((flashSize == 8388608) && (fileSize < 6291456) && reversed) {

@@ -2012,7 +2012,7 @@ void write29F1610_MD() {
   // Create filepath
   sprintf(filePath, "%s/%s", filePath, fileName);
   print_STR(flashing_file_STR, 0);
-  print_Msg(filePath);
+  print_Msg(fileNameFromPath(filePath));
   println_Msg(F("..."));
   display_Update();
 
@@ -2078,7 +2078,7 @@ void write29F800_MD() {
   // Create filepath
   sprintf(filePath, "%s/%s", filePath, fileName);
   print_STR(flashing_file_STR, 0);
-  print_Msg(filePath);
+  print_Msg(fileNameFromPath(filePath));
   println_Msg(F("..."));
   display_Update();
 
@@ -2143,7 +2143,7 @@ void write29GL_MD() {
   // Create filepath
   sprintf(filePath, "%s/%s", filePath, fileName);
   print_STR(flashing_file_STR, 0);
-  print_Msg(filePath);
+  print_Msg(fileNameFromPath(filePath));
   println_Msg(F("..."));
   display_Update();
 
@@ -3270,7 +3270,7 @@ void writeCFI_MD() {
 void writeCFIChip_MD(byte currChip, unsigned long toFlash, unsigned long fileSize) {
   display_Clear();
   print_STR(flashing_file_STR, 0);
-  print_Msg(filePath);
+  print_Msg(fileNameFromPath(filePath));
   println_Msg(F("..."));
   print_Msg(F("Writing"));
   if (currChip == 0 && toFlash == fileSize)  {
