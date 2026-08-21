@@ -280,11 +280,16 @@ void mdMenu() {
       }
       resetFlash_MD();
       if (isFlash29F800_MD()) {
-        println_Msg(F("AM29F800BB detected"));
-        flashSize = 1048576;
-      } else if (flashid == 0x0458) {
-        println_Msg(F("MBM29F800BA detected"));
-        flashSize = 1048576;
+        if (hasSecond29F800_MD()) {
+          println_Msg(F("29F800 x2 detected"));
+          flashSize = 2097152;
+        } else if (flashid == 0x0458) {
+          println_Msg(F("MBM29F800BA detected"));
+          flashSize = 1048576;
+        } else {
+          println_Msg(F("AM29F800BB detected"));
+          flashSize = 1048576;
+        }
       } else if (flashid == 0xC2F1) {
         if (hasSecond29F1610_MD()) {
           println_Msg(F("MX29F1610 x2 detected"));
@@ -311,6 +316,8 @@ void mdMenu() {
         eraseFlash_MD();
       if ((flashid == 0xC2F1) && (flashSize > 2097152))
         resetFlash29F1610_MD();
+      else if (isFlash29F800_MD() && (flashSize > 1048576))
+        resetFlash29F800_MD();
       else
         resetFlash_MD();
       blankcheck_MD();
@@ -322,11 +329,15 @@ void mdMenu() {
         write29F800_MD();
       if ((flashid == 0xC2F1) && (flashSize > 2097152))
         resetFlash29F1610_MD();
+      else if (isFlash29F800_MD() && (flashSize > 1048576))
+        resetFlash29F800_MD();
       else
         resetFlash_MD();
       delay(1000);
       if ((flashid == 0xC2F1) && (flashSize > 2097152))
         resetFlash29F1610_MD();
+      else if (isFlash29F800_MD() && (flashSize > 1048576))
+        resetFlash29F800_MD();
       else
         resetFlash_MD();
       delay(1000);
@@ -2020,8 +2031,63 @@ void resetFlash_MD() {
   dataIn_MD();
 }
 
+bool isFlash29F800Id_MD(word detectedId) {
+  return ((detectedId == 0x0158) || (detectedId == 0x1E3E) || (detectedId == 0x0458) || (detectedId == 0xFF00) || (detectedId == 0xFF80));
+}
+
 bool isFlash29F800_MD() {
-  return ((flashid == 0x0158) || (flashid == 0x1E3E) || (flashid == 0x0458) || (flashid == 0xFF00) || (flashid == 0xFF80));
+  return isFlash29F800Id_MD(flashid);
+}
+
+unsigned long flash29F800Base_MD(unsigned long myAddress) {
+  return myAddress & (1UL << 19);
+}
+
+word idFlash29F800At_MD(unsigned long baseAddress) {
+  writeFlash_MD(baseAddress | 0x555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aa, 0x55);
+  writeFlash_MD(baseAddress | 0x555, 0x90);
+
+  dataIn_MD();
+
+  word detectedId = (readFlash_MD(baseAddress) & 0xFF) << 8;
+  detectedId |= readFlash_MD(baseAddress | 1) & 0xFF;
+
+  dataOut_MD();
+
+  return detectedId;
+}
+
+void resetFlash29F800Chip_MD(unsigned long baseAddress) {
+  writeFlash_MD(baseAddress | 0x555, 0xf0);
+  writeFlash_MD(baseAddress | 0x555, 0xf0);
+}
+
+void resetFlash29F800_MD() {
+  dataOut_MD();
+
+  resetFlash29F800Chip_MD(0);
+  resetFlash29F800Chip_MD(1UL << 19);
+
+  dataIn_MD();
+}
+
+bool hasSecond29F800_MD() {
+  const unsigned long upperBaseAddress = 1UL << 19;
+
+  dataOut_MD();
+  word upperId = idFlash29F800At_MD(upperBaseAddress);
+
+  dataIn_MD();
+  word lowerIdAfterUpperCommand = (readFlash_MD(0) & 0xFF) << 8;
+  lowerIdAfterUpperCommand |= readFlash_MD(1) & 0xFF;
+
+  dataOut_MD();
+  resetFlash29F800Chip_MD(upperBaseAddress);
+  resetFlash29F800Chip_MD(0);
+  dataIn_MD();
+
+  return isFlash29F800Id_MD(upperId) && !isFlash29F800Id_MD(lowerIdAfterUpperCommand);
 }
 
 unsigned long flash29F1610Base_MD(unsigned long myAddress) {
@@ -2210,12 +2276,14 @@ void write29F800_MD() {
       // Write one word at a time with its own unlock sequence
       for (byte c = 0; c < 64; c++) {
         word currWord = ((sdBuffer[d] & 0xFF) << 8) | (sdBuffer[d + 1] & 0xFF);
+        unsigned long currAddress = currByte + c;
+        unsigned long baseAddress = flash29F800Base_MD(currAddress);
 
         // Write command sequence (AM29F800 word mode: 0x555/0x2AA)
-        writeFlash_MD(0x555, 0xaa);
-        writeFlash_MD(0x2aa, 0x55);
-        writeFlash_MD(0x555, 0xa0);
-        writeFlash_MD(currByte + c, currWord);
+        writeFlash_MD(baseAddress | 0x555, 0xaa);
+        writeFlash_MD(baseAddress | 0x2aa, 0x55);
+        writeFlash_MD(baseAddress | 0x555, 0xa0);
+        writeFlash_MD(currAddress, currWord);
 
         // 29F800BB can leave DQ7 polling unreliable on some MD repro boards.
         // Use the datasheet program delay and let verify catch any bad writes.
@@ -2392,30 +2460,40 @@ void eraseFlash_MD() {
 }
 
 void eraseFlash29F800_MD() {
+  eraseFlash29F800Chip_MD(0);
+
+  if (flashSize > 1048576) {
+    eraseFlash29F800Chip_MD(1UL << 19);
+  }
+}
+
+void eraseFlash29F800Chip_MD(unsigned long baseAddress) {
   unsigned long sectorAddress = 0;
 
   // Bottom boot sectors used by AM29F800BB: 16K, 8K, 8K, 32K.
-  eraseFlash29F800Sector_MD(0x0000);
-  eraseFlash29F800Sector_MD(0x2000);
-  eraseFlash29F800Sector_MD(0x3000);
-  eraseFlash29F800Sector_MD(0x4000);
+  eraseFlash29F800Sector_MD(baseAddress | 0x0000);
+  eraseFlash29F800Sector_MD(baseAddress | 0x2000);
+  eraseFlash29F800Sector_MD(baseAddress | 0x3000);
+  eraseFlash29F800Sector_MD(baseAddress | 0x4000);
 
   // Remaining sectors are 64K byte / 32K word sectors.
-  for (sectorAddress = 0x8000; sectorAddress < flashSize / 2; sectorAddress += 0x8000) {
-    eraseFlash29F800Sector_MD(sectorAddress);
+  for (sectorAddress = 0x8000; sectorAddress < (1UL << 19); sectorAddress += 0x8000) {
+    eraseFlash29F800Sector_MD(baseAddress | sectorAddress);
   }
 }
 
 void eraseFlash29F800Sector_MD(unsigned long sectorAddress) {
+  unsigned long baseAddress = flash29F800Base_MD(sectorAddress);
+
   // Set data pins to output
   dataOut_MD();
 
   // Sector erase command sequence (29F800 x16 mode)
-  writeFlash_MD(0x555, 0xaa);
-  writeFlash_MD(0x2aa, 0x55);
-  writeFlash_MD(0x555, 0x80);
-  writeFlash_MD(0x555, 0xaa);
-  writeFlash_MD(0x2aa, 0x55);
+  writeFlash_MD(baseAddress | 0x555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aa, 0x55);
+  writeFlash_MD(baseAddress | 0x555, 0x80);
+  writeFlash_MD(baseAddress | 0x555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aa, 0x55);
   writeFlash_MD(sectorAddress, 0x30);
 
   waitFlash29F800_MD(sectorAddress, 0xFFFF, 5000);
