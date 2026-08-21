@@ -286,8 +286,8 @@ void mdMenu() {
         println_Msg(F("MBM29F800BA detected"));
         flashSize = 1048576;
       } else if (flashid == 0xC2F1) {
-        println_Msg(F("MX29F1610 detected"));
-        flashSize = 2097152;
+        println_Msg(F("MX29F1610 x2 detected"));
+        flashSize = 4194304;
       } else if (flashid == 0x017E) {
         println_Msg(F("S29GL064N detected"));
         flashSize = 4194304;
@@ -298,11 +298,16 @@ void mdMenu() {
       }
       println_Msg("Erasing...");
       display_Update();
-      if (isFlash29F800_MD())
+      if (flashid == 0xC2F1)
+        eraseFlash29F1610_MD();
+      else if (isFlash29F800_MD())
         eraseFlash29F800_MD();
       else
         eraseFlash_MD();
-      resetFlash_MD();
+      if (flashid == 0xC2F1)
+        resetFlash29F1610_MD();
+      else
+        resetFlash_MD();
       blankcheck_MD();
       if (flashid == 0xC2F1)
         write29F1610_MD();
@@ -310,9 +315,15 @@ void mdMenu() {
         write29GL_MD();
       else if (isFlash29F800_MD())
         write29F800_MD();
-      resetFlash_MD();
+      if (flashid == 0xC2F1)
+        resetFlash29F1610_MD();
+      else
+        resetFlash_MD();
       delay(1000);
-      resetFlash_MD();
+      if (flashid == 0xC2F1)
+        resetFlash29F1610_MD();
+      else
+        resetFlash_MD();
       delay(1000);
       println_Msg("Verifying...");
       verifyFlash_MD();
@@ -2008,6 +2019,57 @@ bool isFlash29F800_MD() {
   return ((flashid == 0x0158) || (flashid == 0x1E3E) || (flashid == 0x0458) || (flashid == 0xFF00) || (flashid == 0xFF80));
 }
 
+unsigned long flash29F1610Base_MD(unsigned long myAddress) {
+  return myAddress & (1UL << 20);
+}
+
+void busyCheck29F1610_MD(unsigned long myAddress) {
+  unsigned long baseAddress = flash29F1610Base_MD(myAddress);
+
+  dataIn_MD();
+
+  word statusReg = readFlash_MD(baseAddress);
+  while ((statusReg | 0xFF7F) != 0xFFFF) {
+    statusReg = readFlash_MD(baseAddress);
+  }
+
+  dataOut_MD();
+}
+
+void resetFlash29F1610Chip_MD(unsigned long baseAddress) {
+  writeFlash_MD(baseAddress | 0x555, 0xf0);
+  writeFlash_MD(baseAddress | 0x5555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aaa, 0x55);
+  writeFlash_MD(baseAddress | 0x5555, 0xf0);
+}
+
+void resetFlash29F1610_MD() {
+  dataOut_MD();
+
+  resetFlash29F1610Chip_MD(0);
+  resetFlash29F1610Chip_MD(1UL << 20);
+
+  dataIn_MD();
+}
+
+void eraseFlash29F1610Chip_MD(unsigned long baseAddress) {
+  dataOut_MD();
+
+  writeFlash_MD(baseAddress | 0x5555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aaa, 0x55);
+  writeFlash_MD(baseAddress | 0x5555, 0x80);
+  writeFlash_MD(baseAddress | 0x5555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aaa, 0x55);
+  writeFlash_MD(baseAddress | 0x5555, 0x10);
+
+  busyCheck29F1610_MD(baseAddress);
+}
+
+void eraseFlash29F1610_MD() {
+  eraseFlash29F1610Chip_MD(0);
+  eraseFlash29F1610Chip_MD(1UL << 20);
+}
+
 void write29F1610_MD() {
   // Create filepath
   sprintf(filePath, "%s/%s", filePath, fileName);
@@ -2042,9 +2104,10 @@ void write29F1610_MD() {
       }
 
       // Write command sequence
-      writeFlash_MD(0x5555, 0xaa);
-      writeFlash_MD(0x2aaa, 0x55);
-      writeFlash_MD(0x5555, 0xa0);
+      unsigned long baseAddress = flash29F1610Base_MD(currByte);
+      writeFlash_MD(baseAddress | 0x5555, 0xaa);
+      writeFlash_MD(baseAddress | 0x2aaa, 0x55);
+      writeFlash_MD(baseAddress | 0x5555, 0xa0);
 
       // Write one full page at a time
       for (byte c = 0; c < 64; c++) {
@@ -2056,7 +2119,7 @@ void write29F1610_MD() {
 
       // Check if write is complete
       delayMicroseconds(100);
-      busyCheck_MD();
+      busyCheck29F1610_MD(currByte);
 
       // update progress bar
       processedProgressBar += 64;
