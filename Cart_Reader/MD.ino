@@ -286,8 +286,13 @@ void mdMenu() {
         println_Msg(F("MBM29F800BA detected"));
         flashSize = 1048576;
       } else if (flashid == 0xC2F1) {
-        println_Msg(F("MX29F1610 x2 detected"));
-        flashSize = 4194304;
+        if (hasSecond29F1610_MD()) {
+          println_Msg(F("MX29F1610 x2 detected"));
+          flashSize = 4194304;
+        } else {
+          println_Msg(F("MX29F1610 detected"));
+          flashSize = 2097152;
+        }
       } else if (flashid == 0x017E) {
         println_Msg(F("S29GL064N detected"));
         flashSize = 4194304;
@@ -298,13 +303,13 @@ void mdMenu() {
       }
       println_Msg("Erasing...");
       display_Update();
-      if (flashid == 0xC2F1)
+      if ((flashid == 0xC2F1) && (flashSize > 2097152))
         eraseFlash29F1610_MD();
       else if (isFlash29F800_MD())
         eraseFlash29F800_MD();
       else
         eraseFlash_MD();
-      if (flashid == 0xC2F1)
+      if ((flashid == 0xC2F1) && (flashSize > 2097152))
         resetFlash29F1610_MD();
       else
         resetFlash_MD();
@@ -315,12 +320,12 @@ void mdMenu() {
         write29GL_MD();
       else if (isFlash29F800_MD())
         write29F800_MD();
-      if (flashid == 0xC2F1)
+      if ((flashid == 0xC2F1) && (flashSize > 2097152))
         resetFlash29F1610_MD();
       else
         resetFlash_MD();
       delay(1000);
-      if (flashid == 0xC2F1)
+      if ((flashid == 0xC2F1) && (flashSize > 2097152))
         resetFlash29F1610_MD();
       else
         resetFlash_MD();
@@ -2021,6 +2026,39 @@ bool isFlash29F800_MD() {
 
 unsigned long flash29F1610Base_MD(unsigned long myAddress) {
   return myAddress & (1UL << 20);
+}
+
+word idFlash29F1610At_MD(unsigned long baseAddress) {
+  writeFlash_MD(baseAddress | 0x5555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aaa, 0x55);
+  writeFlash_MD(baseAddress | 0x5555, 0x90);
+
+  dataIn_MD();
+
+  word detectedId = (readFlash_MD(baseAddress) & 0xFF) << 8;
+  detectedId |= readFlash_MD(baseAddress | 1) & 0xFF;
+
+  dataOut_MD();
+
+  return detectedId;
+}
+
+bool hasSecond29F1610_MD() {
+  const unsigned long upperBaseAddress = 1UL << 20;
+
+  dataOut_MD();
+  word upperId = idFlash29F1610At_MD(upperBaseAddress);
+
+  dataIn_MD();
+  word lowerIdAfterUpperCommand = (readFlash_MD(0) & 0xFF) << 8;
+  lowerIdAfterUpperCommand |= readFlash_MD(1) & 0xFF;
+
+  dataOut_MD();
+  resetFlash29F1610Chip_MD(upperBaseAddress);
+  resetFlash29F1610Chip_MD(0);
+  dataIn_MD();
+
+  return (upperId == 0xC2F1) && (lowerIdAfterUpperCommand != 0xC2F1);
 }
 
 void busyCheck29F1610_MD(unsigned long myAddress) {
