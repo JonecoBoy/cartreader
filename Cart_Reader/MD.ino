@@ -19,6 +19,7 @@ unsigned long flashSize;
 unsigned long blank;
 #endif
 #ifdef ENABLE_FLASH
+byte flash29F1610Chips = 0;
 unsigned long flashSizeCFI[] = {0, 0};
 unsigned long totalFlashSizeCFI = 0;
 unsigned long chipIdLowCFI[] = {0, 0};
@@ -226,8 +227,9 @@ static const char MDMenuItem4[] PROGMEM = "Flash CFI";
 static const char* const menuOptionsMD[] PROGMEM = { MDMenuItem1, MDMenuItem2, MDMenuItem3, MDMenuItem4, FSTRING_RESET };
 
 // Cart menu items
-static const char MDCartMenuItem4[] PROGMEM = "Force ROM size";
-static const char* const menuOptionsMDCart[] PROGMEM = { FSTRING_READ_ROM, FSTRING_READ_SAVE, FSTRING_WRITE_SAVE, MDCartMenuItem4, FSTRING_REFRESH_CART, FSTRING_RESET };
+static const char MDCartMenuItem4[] PROGMEM = "Wipe Save";
+static const char MDCartMenuItem5[] PROGMEM = "Force ROM size";
+static const char* const menuOptionsMDCart[] PROGMEM = { FSTRING_READ_ROM, FSTRING_READ_SAVE, FSTRING_WRITE_SAVE, MDCartMenuItem4, MDCartMenuItem5, FSTRING_REFRESH_CART, FSTRING_RESET };
 
 // Sega CD Ram Backup Cartridge menu items
 static const char SCDMenuItem1[] PROGMEM = "Read Backup RAM";
@@ -290,8 +292,14 @@ void mdMenu() {
         println_Msg(F("MBM29F800BA detected"));
         flashSize = 1048576;
       } else if (flashid == 0xC2F1) {
-        println_Msg(F("MX29F1610 x2 detected"));
-        flashSize = 4194304;
+        flash29F1610Chips = detectFlash29F1610Chips_MD();
+        if (flash29F1610Chips == 2) {
+          println_Msg(F("MX29F1610 x2 detected"));
+          flashSize = 4194304;
+        } else {
+          println_Msg(F("MX29F1610 detected"));
+          flashSize = 2097152;
+        }
       } else if (flashid == 0x017E) {
         println_Msg(F("S29GL064N detected"));
         flashSize = 4194304;
@@ -387,11 +395,11 @@ void mdMenu() {
 }
 
 void mdCartMenu() {
-  // create menu with title and 6 options to choose from
+  // create menu with title and 7 options to choose from
   unsigned char mainMenu;
   // Copy menuOptions out of progmem
-  convertPgm(menuOptionsMDCart, 6);
-  mainMenu = question_box(F("MEGA DRIVE Reader"), menuOptions, 6, 0);
+  convertPgm(menuOptionsMDCart, 7);
+  mainMenu = question_box(F("MEGA DRIVE Reader"), menuOptions, 7, 0);
 
   // wait for user choice to come back from the question box menu
   switch (mainMenu) {
@@ -474,10 +482,26 @@ void mdCartMenu() {
 
     case 3:
       display_Clear();
-      force_cartSize_MD();
+      // Does cartridge have SRAM
+      if ((saveType == 1) || (saveType == 2) || (saveType == 3)) {
+        println_Msg(F("Wiping Sram..."));
+        display_Update();
+        enableSram_MD(1);
+        wipeSram_MD();
+        enableSram_MD(0);
+        println_Msg(F("Sram wiped"));
+        display_Update();
+      } else {
+        print_Error(F("Cart has no SRAM"));
+      }
       break;
 
     case 4:
+      display_Clear();
+      force_cartSize_MD();
+      break;
+
+    case 5:
       // For multi-game carts
       // Set reset pin to output (PH0)
       DDRH |= (1 << 0);
@@ -491,7 +515,7 @@ void mdCartMenu() {
       resetArduino();
       break;
 
-    case 5:
+    case 6:
       // Reset
       resetArduino();
       break;
@@ -1892,6 +1916,20 @@ void writeSram_MD() {
   dataIn_MD();
 }
 
+void wipeSram_MD() {
+  dataOut_MD();
+
+  for (unsigned long currByte = sramBase; currByte < sramBase + sramSize; currByte++) {
+    writeWord_MD(currByte, 0xFFFF);
+
+    if (currByte % 4096 == 0) {
+      blinkLED();
+    }
+  }
+
+  dataIn_MD();
+}
+
 // Read sram and save to the SD card
 void readSram_MD() {
   dataIn_MD();
@@ -2031,6 +2069,61 @@ unsigned long flash29F1610Base_MD(unsigned long myAddress) {
   return myAddress & (1UL << 20);
 }
 
+byte flash29F1610ChipCount_MD() {
+  return flash29F1610Chips > 0 ? flash29F1610Chips : 2;
+}
+
+unsigned long flash29F1610ChipBase_MD(byte chip) {
+  return chip == 0 ? 0 : (1UL << 20);
+}
+
+word idFlash29F1610Chip_MD(unsigned long baseAddress) {
+  dataOut_MD();
+
+  writeFlash_MD(baseAddress | 0x5555, 0xaa);
+  writeFlash_MD(baseAddress | 0x2aaa, 0x55);
+  writeFlash_MD(baseAddress | 0x5555, 0x90);
+
+  dataIn_MD();
+
+  word chipId = (readFlash_MD(baseAddress) & 0xFF) << 8;
+  chipId |= readFlash_MD(baseAddress | 1) & 0xFF;
+
+  return chipId;
+}
+
+byte detectFlash29F1610Chips_MD() {
+  const unsigned long highChipBase = 1UL << 20;
+
+  dataOut_MD();
+  resetFlash29F1610Chip_MD(0);
+  resetFlash29F1610Chip_MD(highChipBase);
+
+  if (idFlash29F1610Chip_MD(highChipBase) != 0xC2F1) {
+    dataOut_MD();
+    resetFlash29F1610Chip_MD(0);
+    dataIn_MD();
+    return 1;
+  }
+
+  // If the high address is just a mirror of the low chip, resetting chip 0
+  // also exits autoselect mode at the high address. A real second chip stays
+  // in autoselect mode until it is reset through the high address range.
+  dataOut_MD();
+  resetFlash29F1610Chip_MD(0);
+  dataIn_MD();
+
+  word highChipIdAfterLowReset = (readFlash_MD(highChipBase) & 0xFF) << 8;
+  highChipIdAfterLowReset |= readFlash_MD(highChipBase | 1) & 0xFF;
+
+  dataOut_MD();
+  resetFlash29F1610Chip_MD(highChipBase);
+  resetFlash29F1610Chip_MD(0);
+  dataIn_MD();
+
+  return highChipIdAfterLowReset == 0xC2F1 ? 2 : 1;
+}
+
 void busyCheck29F1610_MD(unsigned long myAddress) {
   unsigned long baseAddress = flash29F1610Base_MD(myAddress);
 
@@ -2054,8 +2147,9 @@ void resetFlash29F1610Chip_MD(unsigned long baseAddress) {
 void resetFlash29F1610_MD() {
   dataOut_MD();
 
-  resetFlash29F1610Chip_MD(0);
-  resetFlash29F1610Chip_MD(1UL << 20);
+  for (byte chip = 0; chip < flash29F1610ChipCount_MD(); chip++) {
+    resetFlash29F1610Chip_MD(flash29F1610ChipBase_MD(chip));
+  }
 
   dataIn_MD();
 }
@@ -2074,8 +2168,9 @@ void eraseFlash29F1610Chip_MD(unsigned long baseAddress) {
 }
 
 void eraseFlash29F1610_MD() {
-  eraseFlash29F1610Chip_MD(0);
-  eraseFlash29F1610Chip_MD(1UL << 20);
+  for (byte chip = 0; chip < flash29F1610ChipCount_MD(); chip++) {
+    eraseFlash29F1610Chip_MD(flash29F1610ChipBase_MD(chip));
+  }
 }
 
 void write29F1610_MD() {
