@@ -272,6 +272,10 @@ void mdMenu() {
       // Setting CS(PH3) LOW
       PORTH &= ~(1 << 3);
 
+      // Ensure the SRAM/FRAM latch selects ROM on carts that use TIME/D0
+      // to avoid bus collisions in the high address range.
+      enableSram_MD(0);
+
       // ID flash
       resetFlash_MD();
       idFlash_MD();
@@ -298,16 +302,18 @@ void mdMenu() {
       }
       println_Msg("Erasing...");
       display_Update();
-      if (flashid == 0xC2F1)
+      if (flashid == 0xC2F1) {
         eraseFlash29F1610_MD();
-      else if (isFlash29F800_MD())
+      } else if (isFlash29F800_MD()) {
         eraseFlash29F800_MD();
-      else
+      } else {
         eraseFlash_MD();
-      if (flashid == 0xC2F1)
+      }
+      if (flashid == 0xC2F1) {
         resetFlash29F1610_MD();
-      else
+      } else {
         resetFlash_MD();
+      }
       blankcheck_MD();
       if (flashid == 0xC2F1)
         write29F1610_MD();
@@ -315,15 +321,17 @@ void mdMenu() {
         write29GL_MD();
       else if (isFlash29F800_MD())
         write29F800_MD();
-      if (flashid == 0xC2F1)
+      if (flashid == 0xC2F1) {
         resetFlash29F1610_MD();
-      else
+      } else {
         resetFlash_MD();
+      }
       delay(1000);
-      if (flashid == 0xC2F1)
+      if (flashid == 0xC2F1) {
         resetFlash29F1610_MD();
-      else
+      } else {
         resetFlash_MD();
+      }
       delay(1000);
       println_Msg("Verifying...");
       verifyFlash_MD();
